@@ -35,7 +35,7 @@ jobs:
   fmt_plan:
     needs: detect_changes
     if: needs.detect_changes.outputs.has_terraform_changes == 'true'
-    runs-on: gep-nonprod-runner
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
