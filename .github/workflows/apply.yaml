@@ -1,0 +1,74 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  detect_changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          list-files: shell
+          filters: |
+            terraform:
+              - 'terraform/**'
+
+      - name: Extract directory paths
+        if: steps.changes.outputs.terraform == 'true'
+        id: terraform_dirs
+        env:
+          FILES: "${{ steps.changes.outputs.terraform_files }}"
+        run: |
+          # Extract directory paths using dirname and convert to JSON array
+          DIRS_JSON=$(echo "$FILES" | xargs -n 1 dirname | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          echo "Directories: $DIRS_JSON"
+          echo "terraform_dirs_json=$DIRS_JSON" >> $GITHUB_OUTPUT
+
+    outputs:
+      terraform_dirs_json: ${{ steps.terraform_dirs.outputs.terraform_dirs_json }}
+      has_terraform_changes: ${{ steps.changes.outputs.terraform }}
+
+  apply:
+    needs: detect_changes
+    if: needs.detect_changes.outputs.has_terraform_changes == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC to assume the AWS role
+      contents: read  # Required to fetch code from the repository
+      pull-requests: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.detect_changes.outputs.terraform_dirs_json) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set AWS role
+        run: |
+          if [[ "${{ matrix.dir }}" == *"production"* ]]; then
+            echo "role_arn=arn:aws:iam::381492271224:role/arc-terraform-action" >> $GITHUB_ENV
+          else
+            echo "role_arn=arn:aws:iam::381492271224:role/arc-terraform-action" >> $GITHUB_ENV
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.role_arn }}
+          aws-region: us-east-2
+
+      - name: Terraform Apply
+        uses: dflook/terraform-apply@v1
+        with:
+          path: ${{ matrix.dir }}
