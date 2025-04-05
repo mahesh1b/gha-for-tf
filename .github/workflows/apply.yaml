@@ -1,6 +1,9 @@
-name: Terraform format and plan
+name: Terraform Apply
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   detect_changes:
@@ -32,13 +35,13 @@ jobs:
       terraform_dirs_json: ${{ steps.terraform_dirs.outputs.terraform_dirs_json }}
       has_terraform_changes: ${{ steps.changes.outputs.terraform }}
 
-  fmt_plan:
+  apply:
     needs: detect_changes
     if: needs.detect_changes.outputs.has_terraform_changes == 'true'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      id-token: write # Required for OIDC to assume the AWS role
+      contents: read  # Required to fetch code from the repository
       pull-requests: write
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,12 +68,7 @@ jobs:
           role-to-assume: ${{ env.role_arn }}
           aws-region: us-east-2
 
-      - name: Terraform fmt-check
-        uses: dflook/terraform-fmt-check@v1
-        with:
-          path: ${{ matrix.dir }}
-
-      - name: Terraform plan
-        uses: dflook/terraform-plan@v1
+      - name: Terraform Apply
+        uses: dflook/terraform-apply@v1
         with:
           path: ${{ matrix.dir }}
